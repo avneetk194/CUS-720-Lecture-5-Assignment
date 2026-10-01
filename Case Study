@@ -1,0 +1,118 @@
+Case Study: A Transcript Redaction Service with Flask and Hugging Face
+The Scenario
+A social-science research lab records interviews with study participants. Before transcripts can be shared with collaborators at other universities, the ethics board (IRB) requires the lab to de-identify them: remove people's names, places, and organizations that could reveal who a participant is.
+
+Today a research assistant does this by hand with find-and-replace. It takes hours per transcript and names get missed. The lab wants a small internal service that does a first pass automatically, so a human only needs to review the result.
+
+The catch: lab members don't all use Python. Some analyze data in R, some work in Excel, and the project coordinator just wants a web page. So the model has to sit behind a simple web API that any tool can call.
+
+Model: dslim/bert-base-NER, a named-entity recognition model on the Hugging Face Hub. It finds persons (PER), locations (LOC), organizations (ORG), and miscellaneous names (MISC) in English text.
+
+Why Flask is the Right Tool Here
+This is a textbook Flask project:
+
+One job, one model. The service loads one model and exposes a few endpoints. There are no user accounts, no admin panel, and no database, so Django's built-in ORM, admin, and auth would go unused.
+Python where the model lives. Hugging Face models run in Python. Flask wraps them in HTTP with very little code, so R scripts, spreadsheets, and browsers can all use the same model.
+Small enough to run anywhere. The whole service fits on a lab workstation or a small server, which matters when data can't leave the university network.
+Learning Goals
+Wrap a Hugging Face model in a Flask JSON API that non-Python clients can call.
+Load a model once and keep it separate from the web code.
+Validate input and return clear JSON errors.
+Test a Flask app without downloading the model.
+Think about what an ML model can and cannot be trusted to do with sensitive data.
+What to Build
+One web page and two JSON endpoints.
+
+Method
+
+Path
+
+What it does
+
+GET, POST
+
+/
+
+A page with a textarea and checkboxes for entity types. On submit, shows the redacted text and a table of what was removed
+
+GET
+
+/api/health
+
+Returns {"status": "ok", "model": "dslim/bert-base-NER"}
+
+POST
+
+/api/redact
+
+Takes JSON text, returns the redacted text and the entities found
+
+Example request and response:
+
+curl -X POST http://127.0.0.1:5000/api/redact \
+  -H "Content-Type: application/json" \
+  -d '{"text": "I met Dr. Maria Lopez at Riverside Clinic in Denver. Email me at maria@example.com."}'
+
+ 
+
+{
+  "redacted_text": "I met Dr. [PER] at [ORG] in [LOC]. Email me at [EMAIL].",
+  "entities": [
+    {"type": "PER", "text": "Maria Lopez", "start": 10, "end": 21, "score": 0.998},
+    {"type": "ORG", "text": "Riverside Clinic", "start": 25, "end": 41, "score": 0.975},
+    {"type": "LOC", "text": "Denver", "start": 45, "end": 51, "score": 0.999},
+    {"type": "EMAIL", "text": "maria@example.com", "start": 65, "end": 82, "score": 1.0}
+  ],
+  "model": "dslim/bert-base-NER"
+}
+
+(Scores are illustrative; your model output will differ slightly.)
+
+Rules:
+
+text is required: a string of 1 to 10,000 characters.
+types is optional: a list chosen from PER, LOC, ORG, MISC. If omitted, redact all four. Anything else is an error.
+Only redact entities with a score of at least 80. Put this threshold in the app's config, not hard-coded in a function.
+Replace each entity with its type in brackets, such as [PER].
+The NER model does not detect email addresses, so also replace emails with [EMAIL] using a regular expression. Emails are always redacted, whatever types
+Errors return JSON like {"error": "text must be 1 to 10,000 characters"} with status 400. Unknown API URLs return JSON 404s, not HTML pages.
+Privacy rule: never save or log the submitted text. This service handles sensitive research data.
+How to Structure 
+Keep it small, but keep the model separate from the web code.
+
+redaction_service/
+├── app.py              # create_app(), routes, error handlers
+├── redactor.py         # model loading, entity finding, redaction logic
+├── templates/
+│   └── index.html
+├── tests/
+│   └── test_app.py
+├── client_example.R    # or .py / .js: a non-browser client (see Deliverables)
+├── requirements.txt
+└── README.md
+
+Requirements:
+
+py has no Flask in it. It holds a Redactor class with a method such as redact(text, types) -> dict. It is the only file that imports transformers.
+Load the model once. Create one Redactor when the app starts, not inside a route. Loading takes several seconds; doing it per request would make every request slow.
+Use a small application factory: create_app(redactor=None). If a redactor is passed in, use it; otherwise build the real one. This is what lets your tests swap in a fake.
+Routes stay thin. A route reads input, calls the redactor, and returns JSON or a template. Validation errors become 400 responses.
+Tests without the model. Write at least 6 pytest tests using a FakeRedactor (or a fake model) that returns fixed entities. Cover a successful redaction, the email rule, the score threshold, invalid types, empty or too-long text, and a JSON 404.
+Model tips:
+
+from transformers import pipeline
+
+ner = pipeline("ner", model="dslim/bert-base-NER", aggregation_strategy="simple")
+ner("Maria Lopez works at Riverside Clinic.")
+# [{'entity_group': 'PER', 'score': 0.998, 'word': 'Maria Lopez', 'start': 0, 'end': 11}, ...]
+
+aggregation_strategy="simple" merges word pieces ("Mar", "##ia") into whole names. Without it you get fragments.
+Each result has start and end character positions. Replace entities from the end of the text backwards, so earlier positions stay valid as the text changes length.
+score comes back as a NumPy number; convert it with float() before returning JSON.
+The model downloads (about 400 MB) the first time. Tests must not trigger this.
+Deliverables
+Upload your code on GitHub and share the repository link (email Or Canvas submission):
+
+The code, templates, tests, and a pinned txt.
+A client example in a language other than a browser: an R script (httr2), a Python script (requests), or a JavaScript file (fetch) that sends a transcript to /api/redact and prints the result. This shows why the lab needed an API.
+A README with setup steps and a short Limitations paragraph: what kinds of identifying details the model will miss (for example dates, ages, phone numbers, job titles, lowercase or unusual names, non-English text), and why a human must still review every transcript before sharing.
