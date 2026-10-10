@@ -1,0 +1,164 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcript Redaction Service</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 850px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f4f6f9;
+            color: #222;
+        }
+
+        h1 {
+            color: #243b53;
+        }
+
+        .panel {
+            background: white;
+            padding: 24px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px #00000012;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 180px;
+            padding: 10px;
+            box-sizing: border-box;
+            font: inherit;
+        }
+
+        button {
+            background: #2457a7;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #183f7a;
+        }
+
+        .error {
+            color: #b00020;
+        }
+
+        .result {
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        .notice {
+            color: #555;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Transcript Redaction Service</h1>
+    <p>Enter text below to redact sensitive information.</p>
+
+    <div class="panel">
+        <form method="POST" action="/">
+            <label for="text"><strong>Text to redact</strong></label>
+            <textarea
+                id="text"
+                name="text"
+                maxlength="10000"
+                required
+            >{{ text or "" }}</textarea>
+
+            <p><strong>Entity types to redact:</strong></p>
+
+            {% for code, label in [
+                ("PER", "People"),
+                ("LOC", "Locations"),
+                ("ORG", "Organizations"),
+                ("MISC", "Other named entities")
+            ] %}
+                <label>
+                    <input
+                        type="checkbox"
+                        name="types"
+                        value="{{ code }}"
+                        {% if selected_types is not defined or code in selected_types %}checked{% endif %}
+                    >
+                    {{ label }}
+                </label><br>
+            {% endfor %}
+
+            <p class="notice">
+                Email addresses are also redacted by the service.
+            </p>
+
+            <button type="submit">Redact Text</button>
+        </form>
+    </div>
+
+    {% if error %}
+        <div class="panel error">
+            <strong>Error:</strong> {{ error }}
+        </div>
+    {% endif %}
+
+    {% if result %}
+        <div class="panel">
+            <h2>Redacted Text</h2>
+            <p class="result">{{ result.redacted_text }}</p>
+        </div>
+
+        <div class="panel">
+            <h2>Detected Entities</h2>
+
+            {% if result.entities %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Entity</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entity in result.entities %}
+                            <tr>
+                                <td>{{ entity.type }}</td>
+                                <td>{{ entity.text }}</td>
+                                <td>
+                                    {% if entity.score is defined %}
+                                        {{ "%.2f"|format(entity.score) }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No named entities were detected.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+</body>
+</html>
