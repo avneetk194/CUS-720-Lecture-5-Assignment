@@ -1,0 +1,4 @@
+# This is where we pin the Member 1 model dependencies. Use Python 3.10–3.12.
+# Member 3 can add pinned Flask and client dependencies when those files exist.
+transformers==4.57.1
+torch==2.8.0
