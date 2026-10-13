@@ -1,0 +1,2 @@
+# This is where we list the small test dependency. Fake tests need no model.
+pytest==8.4.2

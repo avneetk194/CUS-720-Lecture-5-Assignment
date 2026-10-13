@@ -1,4 +1,8 @@
+# This is where we keep local tools and downloaded model files out of GitHub.
+.venv/
 .venv-cus720-w5/
 __pycache__/
+*.py[cod]
 .pytest_cache/
+.model-cache/
 .DS_Store
