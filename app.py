@@ -13,7 +13,9 @@ def create_app(redactor=None):
 
     if redactor is None:
         from redactor import Redactor
-        redactor = Redactor()
+        redactor = Redactor(
+    score_threshold=app.config["REDACTION_THRESHOLD"]
+)
 
     app.config["REDACTOR"] = redactor
 

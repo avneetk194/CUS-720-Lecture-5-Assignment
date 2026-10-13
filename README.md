@@ -5,12 +5,12 @@ transcripts before a person reviews them for sharing. **Redaction** means
 covering private words with labels: `Maria Lopez` becomes `[PER]`, and
 `maria@example.com` becomes `[EMAIL]`.
 
-**Current contribution: Member 1 — ML and redaction logic is complete.**
-The Python redaction engine, configuration, dependencies, and its unit tests are
-implemented. The Flask application, webpage, HTTP endpoint tests, and client
-example are the next team contributions.
+The project now includes the redaction engine, Flask API, webpage,
+automated tests, and a Python client example. The components have been
+combined and tested on the raphael-tests-client-docs branch, pending
+team review before merging into main.
 
-## What I implemented
+## Redaction engine features
 
 | Part | What it does |
 | --- | --- |
@@ -34,23 +34,28 @@ to call.
 
 ```text
 CUS-720-Lecture-5-Assignment/
-├── README.md                 # Project overview and getting started
-├── redactor.py               # Member 1: model loading and redaction
-├── config.py                 # Shared settings and pinned model version
-├── requirements.txt          # Pinned direct ML dependencies
-├── requirements-dev.txt      # Pinned test dependency
+├── app.py                   # Flask application and routes
+├── redactor.py              # Model loading and redaction
+├── config.py                # Redactor settings and model revision
+├── templates/
+│   └── index.html           # Webpage form and results
 ├── tests/
-│   └── test_redactor.py       # Redaction tests with a pretend model
-├── MEMBER_1.md               # Detailed teammate integration notes
-├── .gitignore                # Excludes environments, caches, and model files
-└── Case Study                # Original assignment
+│   ├── test_app.py          # Flask API and form tests
+│   └── test_redactor.py     # Redaction logic tests
+├── client_example.py        # Example HTTP client
+├── requirements.txt         # Model, Flask, and client dependencies
+├── requirements-dev.txt     # Test dependency
+├── README.md                # Setup and usage
+├── MEMBER_1.md              # Vincent’s integration notes
+├── .gitignore               # Excludes local environments and caches
+└── Case Study               # Original assignment
 ```
 
 | Team member | Responsibility | Current status |
 | --- | --- | --- |
-| Member 1 | ML model, redaction logic, configuration, and supporting unit tests | Implemented and verified |
-| Member 2 | `app.py`, `create_app(redactor=None)`, routes, and `templates/index.html` | Planned |
-| Member 3 | Flask endpoint tests, client example, and final service documentation/dependencies | Planned |
+| Vincent (Member 1) | ML model, redaction logic, configuration, and redaction tests | 54 tests passed |
+| Avneet (Member 2) | Flask application, API routes, and webpage | Integrated on Raphael’s branch |
+| Raphael (Member 3) | API/form tests, client example, dependencies, and README | 8 tests passed; real-model client verified; documentation in progress |
 
 ## Set up the project
 
@@ -79,8 +84,19 @@ source .venv/bin/activate
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
+**Alternative: Conda**
 
-Install the model dependencies:
+Instead of the virtual environment commands above, you can use:
+
+```sh
+conda create -n cus720-w5 python=3.11
+conda activate cus720-w5
+```
+
+Each teammate uses their own local environment. Integration testing
+used Python 3.11.16.
+
+Install the application and model dependencies:
 
 ```sh
 python -m pip install -r requirements.txt
@@ -90,6 +106,30 @@ Creating the first real `Redactor()` downloads about **433 MB of model weights**
 plus small configuration/tokenizer files. An internet connection is needed for
 that download. Subsequent calls reuse the loaded model; later startups can reuse
 Hugging Face's downloaded cache.
+
+## Run the application and example client
+
+From the project root, with your environment active, start Flask:
+
+```sh
+python -m flask --app app:create_app run
+```
+
+Open http://127.0.0.1:5000 in your browser to use the webpage.
+The first startup may download the model. Keep this terminal running.
+
+To try the Python client, open a second terminal in the project root,
+activate the same environment, and run:
+
+```sh
+python client_example.py
+```
+
+The client sends an invented transcript to `/api/redact` and prints
+the JSON response as a Python dictionary. Use invented text for this
+example because the response includes original detected entities.
+
+Press Ctrl+C in the server terminal to stop Flask.
 
 ## Use the redactor
 
@@ -158,7 +198,7 @@ wins. Matches that only touch remain separate.
 
 ## Configuration and repeatable setup
 
-Shared settings live in [`config.py`](config.py):
+Redactor settings live in [`config.py`](config.py):
 
 | Setting | Value | Meaning |
 | --- | --- | --- |
@@ -175,9 +215,7 @@ You can pass a configured threshold when creating the object:
 redactor = Redactor(score_threshold=0.90)
 ```
 
-The model revision and direct dependencies are pinned: `transformers==4.57.1`,
-`torch==2.8.0`, and `pytest==8.4.2`. The weights use the safetensors format.
-Python versions, hardware, and transitive dependencies can still change numerical
+The model revision and direct dependencies are pinned: `transformers==4.57.1`, `torch==2.8.0`, `Flask==3.1.3`, `requests==2.34.2`, and `pytest==8.4.2`. The weights use the safetensors format. Python versions, hardware, and transitive dependencies can still change numerical
 results; identical confidence scores on every machine are not guaranteed.
 
 ## Run the tests without downloading the model
@@ -189,11 +227,25 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-For a test-only setup, installing `requirements-dev.txt` is enough; the tests do
-not need the ML dependencies. They pass a pretend model into the **real Redactor**
-so the actual filtering and replacement code is exercised.
+For a test-only setup, install pytest and Flask:
 
-**Verification completed for this contribution:**
+```sh
+python -m pip install -r requirements-dev.txt Flask==3.1.3
+python -m pytest -q
+```
+
+The tests do not download the model. Redaction tests supply a fake
+model to the real Redactor; Flask tests supply a fake redactor or
+mock its constructor.
+
+The suite includes 54 redaction test cases and 8 Flask tests covering
+health, successful API requests, invalid entity types, empty text,
+oversized text, JSON 404 responses, threshold configuration, and
+webpage form submission.
+
+**Verification:**
+- Full integrated test suite: **62 passed**—54 redaction test cases
+  and 8 Flask API/form tests.
 
 - **54 unit test cases passed**, covering confidence boundaries, every supported
   type, email rules, original positions, repeated matches, Unicode, overlaps,
@@ -203,34 +255,45 @@ so the actual filtering and replacement code is exercised.
 - The installed environment passed `python -m pip check`.
 
 The separate real-model check used invented text. It is not part of the default
-pytest suite. Flask endpoint tests belong in Member 3's `tests/test_app.py`.
+pytest suite. Flask endpoint and form tests are implemented in `tests/test_app.py`.
+The Python client was also verified against the running service with
+the real model using an invented transcript.
 
-## Connect the Flask application
 
-Member 2 should create one Redactor inside `create_app(redactor=None)`, after
-loading the application's configuration. Pass
-`app.config["SCORE_THRESHOLD"]` into its constructor. Each route then calls:
-
-```python
-result = redactor.redact(text, types)
-```
-
-Keep the model object for later requests. The constructor accepts
-`ner_pipeline=...` for testing this logic; the Flask factory can accept an entire
-fake redactor for testing routes. Invalid model scores or positions raise
-`RuntimeError`, which the web service should treat as a server failure.
-
-The team's planned web interface is:
+## Flask API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET`, `POST` | `/` | Transcript form and results, as described in the assignment. |
-| `GET` | `/api/health` | Service status and model name. |
-| `POST` | `/api/redact` | JSON request containing `text` and optional `types`. |
+| GET | `/` | Display the transcript form. |
+| POST | `/` | Submit the form and display results. |
+| GET | `/api/health` | Return service status and model name. |
+| POST | `/api/redact` | Redact text from a JSON request. |
 
-These routes are the next implementation step. Flask launch commands, HTTP
-examples, and the client example should be added when the application is ready.
-See [`MEMBER_1.md`](MEMBER_1.md) for detailed integration notes.
+Example JSON request to `/api/redact`:
+
+```json
+{
+  "text": "Maria works in Boston. Email maria@example.com.",
+  "types": ["PER", "LOC"]
+}
+```
+
+Successful requests return HTTP 200 with `redacted_text`, `entities`,
+and `model`, as described in the return format above.
+
+Omitting `types` selects all four named-entity types. An empty list
+selects email-only redaction. Emails are always checked.
+
+Invalid input returns HTTP 400 with a JSON `error` field.
+Unknown API paths return HTTP 404 with `{"error": "Not found"}`.
+
+The application creates one redactor at startup and passes
+`app.config["REDACTION_THRESHOLD"]` to its `score_threshold`
+parameter. The current threshold is 0.80. Changing it requires
+recreating the application.
+
+Tests can supply a fake redactor through `create_app(redactor=...)`
+without loading the model.
 
 ## Limitations and privacy
 
