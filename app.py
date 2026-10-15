@@ -1,21 +1,23 @@
+"""Flask form and JSON API backed by one reusable redactor."""
 
 from flask import Flask, jsonify, render_template, request
 
-MODEL_NAME = "dslim/bert-base-NER"
-ALLOWED_TYPES = {"PER", "LOC", "ORG", "MISC"}
+from config import ENTITY_TYPES, MAX_TEXT_LENGTH, MODEL_NAME, SCORE_THRESHOLD
+
+ALLOWED_TYPES = set(ENTITY_TYPES)
 
 
 def create_app(redactor=None):
     app = Flask(__name__)
 
     app.config["MODEL_NAME"] = MODEL_NAME
-    app.config["REDACTION_THRESHOLD"] = 0.80
+    app.config["REDACTION_THRESHOLD"] = SCORE_THRESHOLD
 
     if redactor is None:
         from redactor import Redactor
         redactor = Redactor(
-    score_threshold=app.config["REDACTION_THRESHOLD"]
-)
+            score_threshold=app.config["REDACTION_THRESHOLD"]
+        )
 
     app.config["REDACTOR"] = redactor
 
@@ -28,12 +30,12 @@ def create_app(redactor=None):
         if not isinstance(text, str):
             return None, None, "Text must be a string."
 
-        if not 1 <= len(text) <= 10000:
+        if not 1 <= len(text) <= MAX_TEXT_LENGTH:
             return None, None, "Text must be 1 to 10,000 characters."
 
         types = data.get("types")
 
-        if types is not None:
+        if "types" in data:
             if not isinstance(types, list):
                 return None, None, "Types must be a list."
 
@@ -101,4 +103,4 @@ def create_app(redactor=None):
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True)
+    app.run(debug=False)

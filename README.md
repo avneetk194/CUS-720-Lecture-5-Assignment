@@ -5,10 +5,10 @@ transcripts before a person reviews them for sharing. **Redaction** means
 covering private words with labels: `Maria Lopez` becomes `[PER]`, and
 `maria@example.com` becomes `[EMAIL]`.
 
-The project now includes the redaction engine, Flask API, webpage,
-automated tests, and a Python client example. The components have been
-combined and tested on the raphael-tests-client-docs branch, pending
-team review before merging into main.
+The complete project is integrated on `main`: the redaction engine, Flask API,
+webpage, automated tests, pinned dependencies, and a Python client example.
+Avneet's `flask-api` work and Raphael's `raphael-tests-client-docs` work are
+included, with final integration fixes and updated submission documentation.
 
 ## Redaction engine features
 
@@ -27,8 +27,8 @@ team review before merging into main.
 | Privacy | Does not print, log, save, or retain submitted transcripts between calls. |
 
 The code uses descriptive names and comments that explain what each section does
-and why. The model logic stays in `redactor.py`, ready for the Flask application
-to call.
+and why. The model logic stays in `redactor.py`; Flask calls it through the
+application factory in `app.py`.
 
 ## Files and responsibilities
 
@@ -53,9 +53,9 @@ CUS-720-Lecture-5-Assignment/
 
 | Team member | Responsibility | Current status |
 | --- | --- | --- |
-| Vincent (Member 1) | ML model, redaction logic, configuration, and redaction tests | 54 tests passed |
-| Avneet (Member 2) | Flask application, API routes, and webpage | Integrated on Raphael’s branch |
-| Raphael (Member 3) | API/form tests, client example, dependencies, and README | 8 tests passed; real-model client verified; documentation in progress |
+| Vincent (Member 1) | ML model, redaction logic, configuration, and redaction tests | Complete and integrated |
+| Avneet (Member 2) | Flask application, API routes, and webpage | Complete and integrated |
+| Raphael (Member 3) | API/form tests, client example, dependencies, and README | Complete and integrated |
 
 ## Set up the project
 
@@ -93,8 +93,8 @@ conda create -n cus720-w5 python=3.11
 conda activate cus720-w5
 ```
 
-Each teammate uses their own local environment. Integration testing
-used Python 3.11.16.
+Each teammate uses their own local environment. Final integration verification
+used Python 3.12.13 on macOS with Apple silicon.
 
 Install the application and model dependencies:
 
@@ -117,6 +117,9 @@ python -m flask --app app:create_app run
 
 Open http://127.0.0.1:5000 in your browser to use the webpage.
 The first startup may download the model. Keep this terminal running.
+Both this command and `python app.py` run with debug mode disabled by default.
+If port 5000 is already in use, stop the conflicting service before starting
+the example client, which uses that port.
 
 To try the Python client, open a second terminal in the project root,
 activate the same environment, and run:
@@ -215,7 +218,15 @@ You can pass a configured threshold when creating the object:
 redactor = Redactor(score_threshold=0.90)
 ```
 
-The model revision and direct dependencies are pinned: `transformers==4.57.1`, `torch==2.8.0`, `Flask==3.1.3`, `requests==2.34.2`, and `pytest==8.4.2`. The weights use the safetensors format. Python versions, hardware, and transitive dependencies can still change numerical
+For the web service, `create_app()` copies `config.SCORE_THRESHOLD` into
+`app.config["REDACTION_THRESHOLD"]` and passes it to the Redactor once at startup.
+Edit the shared setting and restart the service to change the threshold.
+The Flask input checks also use the shared entity types and text-length limit.
+
+The model revision and direct dependencies are pinned: `transformers==4.57.1`,
+`torch==2.8.0`, `Flask==3.1.3`, `requests==2.34.2`, and `pytest==8.4.2`.
+The weights use the safetensors format.
+Python versions, hardware, and transitive dependencies can still change numerical
 results; identical confidence scores on every machine are not guaranteed.
 
 ## Run the tests without downloading the model
@@ -227,38 +238,23 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-For a test-only setup, install pytest and Flask:
+For a test-only setup, `requirements-dev.txt` installs pytest and Flask; it does
+not install the ML packages or download the model. Redaction tests supply a fake
+model to the real Redactor. Flask tests supply a fake redactor, mock its
+constructor, or use the real redaction logic with fake predictions.
 
-```sh
-python -m pip install -r requirements-dev.txt Flask==3.1.3
-python -m pytest -q
-```
+**Final verification:**
 
-The tests do not download the model. Redaction tests supply a fake
-model to the real Redactor; Flask tests supply a fake redactor or
-mock its constructor.
-
-The suite includes 54 redaction test cases and 8 Flask tests covering
-health, successful API requests, invalid entity types, empty text,
-oversized text, JSON 404 responses, threshold configuration, and
-webpage form submission.
-
-**Verification:**
-- Full integrated test suite: **62 passed**—54 redaction test cases
-  and 8 Flask API/form tests.
-
-- **54 unit test cases passed**, covering confidence boundaries, every supported
-  type, email rules, original positions, repeated matches, Unicode, overlaps,
-  invalid inputs, JSON conversion, model reuse, and privacy behavior.
-- A separate check with the real downloaded model passed for short text, email
-  redaction, JSON serialization, and names beyond the first model chunk.
+- **75 tests passed:** 54 redaction cases and 21 Flask API/form cases. Coverage
+  includes email-only requests, the exact 0.80 threshold, default entity types,
+  malformed JSON, invalid inputs, JSON 404s, model reuse, and HTML escaping.
+- Separate checks with the cached real model exercised the API and form,
+  original entity positions, JSON serialization, email redaction, and names
+  beyond the first model chunk. These use invented text and are separate from
+  the default pytest suite.
+- The Python example client passed against a running local HTTP service with
+  the real model and its invented transcript.
 - The installed environment passed `python -m pip check`.
-
-The separate real-model check used invented text. It is not part of the default
-pytest suite. Flask endpoint and form tests are implemented in `tests/test_app.py`.
-The Python client was also verified against the running service with
-the real model using an invented transcript.
-
 
 ## Flask API
 
@@ -278,11 +274,21 @@ Example JSON request to `/api/redact`:
 }
 ```
 
+Try the endpoints from another terminal while Flask is running:
+
+```sh
+curl http://127.0.0.1:5000/api/health
+curl -X POST http://127.0.0.1:5000/api/redact \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Maria works in Boston. Email maria@example.com.","types":["PER","LOC"]}'
+```
+
 Successful requests return HTTP 200 with `redacted_text`, `entities`,
 and `model`, as described in the return format above.
 
 Omitting `types` selects all four named-entity types. An empty list
-selects email-only redaction. Emails are always checked.
+selects email-only redaction. Emails are always checked. An explicitly supplied
+`types` value must be a list; `null` is invalid for the JSON API.
 
 Invalid input returns HTTP 400 with a JSON `error` field.
 Unknown API paths return HTTP 404 with `{"error": "Not found"}`.
@@ -299,7 +305,9 @@ without loading the model.
 
 This model provides a first pass for **English text**. It can miss unusual or
 lowercase names, ages, dates, phone numbers, job titles, and other identifying
-details. The email regex covers common addresses, with limited support for
+details. Long inputs are fully processed, but chunk context can still cause
+partial or missed name detections. The email regex covers common addresses,
+with limited support for
 quoted or internationalized addresses. The confidence cutoff also leaves lower
 scoring model matches in the text. **A person must review every transcript before
 it is shared.**

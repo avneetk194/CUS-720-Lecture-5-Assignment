@@ -63,25 +63,26 @@ ordinary Python floats, so the result can be returned as JSON.
   range. EMAIL wins the label; otherwise the higher-confidence label wins.
   The resulting entity text and offsets describe that combined range.
 
-## Member 2: connect Flask's configuration
+## Flask integration (completed)
 
-Use the shared setting in the application factory, after loading any app config:
+`app.py` now creates and reuses one Redactor in `create_app(redactor=None)`.
+The shared confidence setting is passed through Flask's configuration:
 
 ```python
 from config import SCORE_THRESHOLD
 from redactor import Redactor
 
-app.config.setdefault("SCORE_THRESHOLD", SCORE_THRESHOLD)
+app.config["REDACTION_THRESHOLD"] = SCORE_THRESHOLD
 if redactor is None:
-    redactor = Redactor(score_threshold=app.config["SCORE_THRESHOLD"])
+    redactor = Redactor(score_threshold=app.config["REDACTION_THRESHOLD"])
 ```
 
-Keep that object in the factory's route closure or `app.extensions`. A route
-validates the request and calls `redactor.redact(text, types)`; it does not load
-the model. Catch input-validation `ValueError`s for JSON 400 responses. Unexpected
-model failures are server errors, not bad client requests; invalid model scores
-and positions raise `RuntimeError`. Changing app config after startup does not change an
-existing Redactor; construct it with the intended threshold at startup.
+The factory stores that object in `app.config["REDACTOR"]`. Routes validate
+requests before calling `redactor.redact(text, types)` and return 400 for invalid
+inputs. They do not load the model. Unexpected model failures are server errors;
+invalid model scores and positions raise `RuntimeError`. Changing app config
+after startup does not change an existing Redactor; edit `config.py` and restart
+the service to use a new threshold.
 
 ## Check the logic without downloading the model
 
@@ -92,8 +93,8 @@ python -m pytest -q
 
 The tests inject pretend model predictions into the real Redactor. They test
 replacement positions, threshold boundaries, selected types, emails, overlaps,
-Unicode, validation, JSON numbers, model reuse, and privacy behavior. Member 3
-can add endpoint tests in `tests/test_app.py` using the agreed return structure.
+Unicode, validation, JSON numbers, model reuse, and privacy behavior.
+`tests/test_app.py` now covers the Flask API and form using the agreed structure.
 
 The model name, model commit, and direct ML dependencies are pinned. Python,
 hardware, and transitive dependencies can still affect numerical results; model
